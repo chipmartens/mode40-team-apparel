@@ -237,7 +237,7 @@ function render(){
   });
   g.addEventListener("change",e=>{
     const s=e.target.closest("[data-id][data-k]"); if(!s)return;
-    state[s.dataset.id][s.dataset.k]=s.value; syncCart();
+    state[s.dataset.id][s.dataset.k]=s.value; syncCart(); saveState();
   });
 }
 
@@ -253,7 +253,7 @@ function step(id,d){
   $("#n_"+id).textContent=st.qty;
   $("#s_"+id).textContent=(st.qty>0&&it.price!=null)?money(st.qty*it.price):"";
   $("#c_"+id).classList.toggle("on",st.qty>0);
-  syncCart();
+  syncCart(); saveState();
 }
 
 let warnT;
@@ -329,7 +329,7 @@ $("#submitBtn").addEventListener("click",async()=>{
     await fetch(EP,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},
       body:JSON.stringify(payloadObj())});
     $("#okMsg").textContent=`Thanks ${$("#uname").value.trim().split(" ")[0]||""} — your picks are logged. Chip will place the group order.`;
-    $("#okDlg").showModal();
+    $("#okDlg").showModal(); clearState();
   }catch(e){flashWarn("Couldn't reach the sheet — use Copy / email instead.");}
   btn.disabled=false;btn.textContent="Submit Order";
 });
@@ -374,7 +374,38 @@ function applyOrder(items){
 if(DATA.loadEnabled){$("#loadBtn").addEventListener("click",loadOrder);}
 else{const _lb=$("#loadBtn");if(_lb)_lb.remove();const _ls=$("#loadStatus");if(_ls)_ls.remove();}
 
+// --- keep the cart across refresh (local, ~60 min) ---
+var LS_KEY="mode40_apparel_order_v1", LS_TTL=60*60*1000;
+function saveState(){
+  try{ var sel={};
+    DATA.catalog.forEach(function(i){var st=state[i.id]; if(st.qty>0){sel[i.id]={qty:st.qty,size:st.size,fit:st.fit};}});
+    localStorage.setItem(LS_KEY, JSON.stringify({t:Date.now(),name:$("#uname").value,email:$("#uemail").value,sel:sel}));
+  }catch(e){}
+}
+function clearState(){ try{localStorage.removeItem(LS_KEY);}catch(e){} }
+function restoreState(){
+  try{ var raw=localStorage.getItem(LS_KEY); if(!raw)return;
+    var d=JSON.parse(raw); if(!d||!d.t||Date.now()-d.t>LS_TTL){clearState();return;}
+    if(d.name)$("#uname").value=d.name; if(d.email)$("#uemail").value=d.email;
+    Object.keys(d.sel||{}).forEach(function(id){
+      var it=DATA.catalog.find(function(i){return i.id===id;}); if(!it)return;
+      var st=state[id], s=d.sel[id];
+      if(s.size)st.size=s.size; if(s.fit)st.fit=s.fit; st.qty=+s.qty||0;
+      var fs=document.querySelector('select[data-id="'+id+'"][data-k="fit"]'); if(fs&&s.fit)fs.value=s.fit;
+      var ss=document.querySelector('select[data-id="'+id+'"][data-k="size"]'); if(ss&&s.size)ss.value=s.size;
+      var bi=document.querySelector('.byocin[data-id="'+id+'"]'); if(bi&&s.size)bi.value=s.size;
+      $("#n_"+id).textContent=st.qty;
+      $("#s_"+id).textContent=(st.qty>0&&it.price!=null)?money(st.qty*it.price):"";
+      $("#c_"+id).classList.toggle("on",st.qty>0);
+    });
+  }catch(e){}
+}
+$("#uname").addEventListener("input",saveState);
+$("#uemail").addEventListener("input",saveState);
+
 const dlg=$("#dlg"),okDlg=$("#okDlg");
-render();syncCart();
+render();
+restoreState();
+syncCart();
 </script>
 </body></html>
